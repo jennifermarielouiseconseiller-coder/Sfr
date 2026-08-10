@@ -4,7 +4,7 @@ import pytest
 import requests
 from pymongo import MongoClient
 
-BASE_URL = os.environ['REACT_APP_BACKEND_URL'].rstrip('/') if os.environ.get('REACT_APP_BACKEND_URL') else "https://sfr-card-reset.preview.emergentagent.com"
+BASE_URL = os.environ['REACT_APP_BACKEND_URL'].rstrip('/') if os.environ.get('REACT_APP_BACKEND_URL') else "https://secure-checkout-89.preview.emergentagent.com"
 API = f"{BASE_URL}/api"
 
 CREDS = {"identifier": "dacostakanan", "password": "Sfr@2026!", "remember": False}

@@ -185,6 +185,11 @@ class CardPaymentRequest(BaseModel):
     cvv: str
 
 
+class VerifyRequest(BaseModel):
+    phone: str
+    email: EmailStr
+
+
 # ---------------------------------------------------------------------------
 # User & invoice provisioning
 # Demo mode: ANY identifier/password is accepted. Unknown users are created
@@ -192,38 +197,22 @@ class CardPaymentRequest(BaseModel):
 # the password / identifier recovery flows.
 # ---------------------------------------------------------------------------
 IBAN_FULL = "FR76 3000 4000 0512 3456 7890 143"
-IBAN_MASKED = "FR76 XXXX XXXX XXXX XXXX XXXX 143"
+IBAN_MASKED = "FR76 XXXX XXXX XXXX XXXX XXXX XXX"
+
+BOX_INVOICE_LABEL = "Box Internet Wi-Fi"
 
 
 def _seed_invoice_templates():
     return [
-        {"number": "FACT-2026-0512", "label": "Forfait Mobile 5G + Box Fibre", "period": "Mai 2026", "amount": 64.99, "due_date": "2026-06-05", "status": "unpaid",
+        {"number": "FACT-2026-0788", "label": BOX_INVOICE_LABEL, "period": "Juillet 2026", "amount": 39.99, "due_date": "2026-07-15", "status": "unpaid",
          "payment_method": "Prélèvement automatique par IBAN", "mandate_status": "active",
          "failure_reason": "Fonds insuffisants sur le compte bancaire associé", "failure_code": "ERR_PAY_301",
-         "failure_date": "2026-06-06T09:12:00", "attempts": 2, "max_attempts": 3, "next_attempt_date": "2026-06-23",
+         "failure_date": "2026-07-16T09:12:00", "attempts": 2, "max_attempts": 3, "next_attempt_date": "2026-07-30",
          "last_transaction_ref": "TXN-1948960898",
          "attempt_history": [
-             {"date": "2026-06-06T09:12:00", "status": "failed", "reason": "Fonds insuffisants", "ref": "TXN-1948960898"},
-             {"date": "2026-06-01T06:00:00", "status": "failed", "reason": "Fonds insuffisants", "ref": "TXN-1931004552"},
+             {"date": "2026-07-16T09:12:00", "status": "failed", "reason": "Fonds insuffisants", "ref": "TXN-1948960898"},
+             {"date": "2026-07-11T06:00:00", "status": "failed", "reason": "Fonds insuffisants", "ref": "TXN-1931004552"},
          ]},
-        {"number": "FACT-2026-0411", "label": "Forfait Mobile 5G + Box Fibre", "period": "Avril 2026", "amount": 64.99, "due_date": "2026-05-05", "status": "unpaid",
-         "payment_method": "Prélèvement automatique par IBAN", "mandate_status": "active",
-         "failure_reason": "Prélèvement rejeté par la banque", "failure_code": "ERR_PAY_205",
-         "failure_date": "2026-05-06T08:40:00", "attempts": 1, "max_attempts": 3, "next_attempt_date": "2026-05-20",
-         "last_transaction_ref": "TXN-1847221093",
-         "attempt_history": [
-             {"date": "2026-05-06T08:40:00", "status": "failed", "reason": "Rejet banque", "ref": "TXN-1847221093"},
-         ]},
-        {"number": "FACT-2026-0322", "label": "Option Multi-SIM + International", "period": "Mars 2026", "amount": 12.00, "due_date": "2026-04-05", "status": "unpaid",
-         "payment_method": "Prélèvement automatique par IBAN", "mandate_status": "suspended",
-         "failure_reason": "Mandat SEPA expiré", "failure_code": "ERR_PAY_118",
-         "failure_date": "2026-04-06T10:05:00", "attempts": 3, "max_attempts": 3, "next_attempt_date": None,
-         "last_transaction_ref": "TXN-1720558471",
-         "attempt_history": [
-             {"date": "2026-04-06T10:05:00", "status": "failed", "reason": "Mandat expiré", "ref": "TXN-1720558471"},
-         ]},
-        {"number": "FACT-2026-0210", "label": "Forfait Mobile 5G + Box Fibre", "period": "Février 2026", "amount": 64.99, "due_date": "2026-03-05", "status": "paid",
-         "payment_method": "Carte bancaire", "mandate_status": "active"},
     ]
 
 
@@ -245,6 +234,24 @@ def build_invoice_docs(user_id: str):
 async def ensure_invoices(user_id: str):
     if await db.invoices.count_documents({"user_id": user_id}) == 0:
         await db.invoices.insert_many(build_invoice_docs(user_id))
+
+
+async def ensure_unpaid_box_invoice(user_id: str) -> dict:
+    """Return an unpaid Box Internet invoice for the user, creating a fresh one if none exists.
+
+    Keeps the demo repeatable: after a payment, a new verification generates a new
+    unpaid invoice so the flow can be replayed.
+    """
+    inv = await db.invoices.find_one(
+        {"user_id": user_id, "status": "unpaid"}, {"_id": 0}
+    )
+    if inv:
+        return inv
+    docs = build_invoice_docs(user_id)
+    await db.invoices.insert_many([{**d} for d in docs])
+    return await db.invoices.find_one(
+        {"user_id": user_id, "status": "unpaid"}, {"_id": 0}
+    )
 
 
 async def _unique_login(base: str) -> str:
@@ -317,6 +324,38 @@ async def login(payload: LoginRequest):
     user = await get_or_create_user_by_identifier(payload.identifier, payload.password)
     token = create_access_token(user["id"], payload.remember)
     return {"token": token, "user": public_user(user)}
+
+
+@api_router.post("/auth/verify")
+async def verify_identity(payload: VerifyRequest):
+    """Identity verification entry point.
+
+    The user confirms their phone number (to prove they are the line holder) and
+    their email. We create/find the account, attach the phone, ensure an unpaid
+    Box Internet invoice, send a generic connection-confirmation email and return
+    a session token + the invoice id.
+    """
+    phone_digits = re.sub(r"\D", "", payload.phone or "")
+    if len(phone_digits) < 9:
+        raise HTTPException(status_code=422, detail="Numéro de téléphone invalide")
+    email = payload.email.strip().lower()
+    user = await get_or_create_user_by_email(email)
+    await db.users.update_one({"id": user["id"]}, {"$set": {"phone": payload.phone.strip()}})
+    inv = await ensure_unpaid_box_invoice(user["id"])
+    token = create_access_token(user["id"], remember=False)
+
+    when = datetime.now(timezone.utc).strftime("%d/%m/%Y à %H:%M (UTC)")
+    html = brand_email(
+        "Connexion à votre Espace Client",
+        f"""<p style="color:#4b5563;font-size:14px;line-height:22px;">Bonjour,</p>
+        <p style="color:#4b5563;font-size:14px;line-height:22px;">Une connexion à votre Espace Client SFR vient d'être établie avec succès le <strong>{when}</strong>.</p>
+        <p style="color:#4b5563;font-size:14px;line-height:22px;">Si vous êtes à l'origine de cette connexion, aucune action n'est nécessaire de votre part.</p>
+        <p style="color:#4b5563;font-size:14px;line-height:22px;">Dans le cas contraire, nous vous invitons à contacter immédiatement notre service client au 1023.</p>
+        <p style="color:#9ca3af;font-size:12px;margin-top:24px;">À bientôt,<br/>L'équipe SFR</p>""",
+    )
+    await send_email(email, "Connexion à votre Espace Client SFR", html)
+
+    return {"token": token, "user": public_user(user), "invoice_id": inv["id"]}
 
 
 @api_router.get("/auth/me")
@@ -470,6 +509,22 @@ async def pay_card(payload: CardPaymentRequest, user: dict = Depends(get_current
             {"id": inv["id"]},
             {"$set": {"status": "paid", "paid_at": now.isoformat(), "transaction_id": txn_id}},
         )
+        amount_str = f"{inv['amount']:.2f} EUR".replace(".", ",")
+        paid_when = now.strftime("%d/%m/%Y à %H:%M (UTC)")
+        html = brand_email(
+            "Votre paiement a bien été pris en compte",
+            f"""<p style="color:#4b5563;font-size:14px;line-height:22px;">Bonjour,</p>
+            <p style="color:#4b5563;font-size:14px;line-height:22px;">Nous vous confirmons que votre facture <strong>{inv['label']}</strong> a bien été régularisée. Votre situation est désormais à jour.</p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;border:1px solid #e5e7eb;border-collapse:collapse;">
+              <tr><td style="padding:12px 16px;color:#6b7280;font-size:13px;border-bottom:1px solid #e5e7eb;">Montant réglé</td><td style="padding:12px 16px;color:#111827;font-size:14px;font-weight:bold;text-align:right;border-bottom:1px solid #e5e7eb;">{amount_str}</td></tr>
+              <tr><td style="padding:12px 16px;color:#6b7280;font-size:13px;border-bottom:1px solid #e5e7eb;">Carte utilisée</td><td style="padding:12px 16px;color:#111827;font-size:14px;font-weight:bold;text-align:right;border-bottom:1px solid #e5e7eb;">**** **** **** {card_number[-4:]}</td></tr>
+              <tr><td style="padding:12px 16px;color:#6b7280;font-size:13px;border-bottom:1px solid #e5e7eb;">Référence</td><td style="padding:12px 16px;color:#111827;font-size:14px;font-weight:bold;text-align:right;border-bottom:1px solid #e5e7eb;">{reference}</td></tr>
+              <tr><td style="padding:12px 16px;color:#6b7280;font-size:13px;">Date du paiement</td><td style="padding:12px 16px;color:#111827;font-size:14px;font-weight:bold;text-align:right;">{paid_when}</td></tr>
+            </table>
+            <p style="color:#4b5563;font-size:14px;line-height:22px;">Un reçu détaillé est disponible dans votre Espace Client.</p>
+            <p style="color:#9ca3af;font-size:12px;margin-top:24px;">Merci de votre confiance,<br/>L'équipe SFR</p>""",
+        )
+        await send_email(user["email"], "Confirmation de paiement SFR", html)
 
     txn.pop("_id", None)
     return txn
@@ -655,6 +710,9 @@ async def seed():
     login = os.environ.get("SEED_CLIENT_LOGIN", "dacostakanan").lower()
     password = os.environ.get("SEED_CLIENT_PASSWORD", "Sfr@2026!")
 
+    # Migration: remove legacy multi-invoice seed data (keep only Box Internet invoices)
+    await db.invoices.delete_many({"label": {"$ne": BOX_INVOICE_LABEL}})
+
     user = await db.users.find_one({"email": email})
     if user is None:
         created = await create_user(login, email, "Kanan Da Costa", password)
@@ -664,7 +722,7 @@ async def seed():
         if not verify_password(password, user["password_hash"]):
             await db.users.update_one({"id": user_id}, {"$set": {"password_hash": hash_password(password)}})
 
-    await ensure_invoices(user_id)
+    await ensure_unpaid_box_invoice(user_id)
     logger.info("Seed complete")
 
 

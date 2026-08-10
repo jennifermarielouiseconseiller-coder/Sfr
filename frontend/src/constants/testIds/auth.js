@@ -26,4 +26,8 @@ export const AUTH = {
   resetPasswordSuccess: "reset-password-success-message",
   logoutButton: "logout-button",
   backToLoginLink: "back-to-login-link",
+  verifyPhone: "verify-phone-input",
+  verifyEmail: "verify-email-input",
+  verifySubmit: "verify-submit-button",
+  verifyError: "verify-error-message",
 };

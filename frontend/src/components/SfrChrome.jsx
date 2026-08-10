@@ -19,7 +19,7 @@ export const SfrLogo = ({ size = 40 }) => (
 export const SfrTopBar = () => (
   <header data-testid={APP.header} className="bg-white border-b border-border sticky top-0 z-40">
     <div className="max-w-6xl mx-auto px-4 h-16 flex items-center">
-      <Link to="/login" className="flex items-center">
+      <Link to="/verification" className="flex items-center">
         <SfrLogo size={34} />
       </Link>
     </div>
@@ -28,28 +28,25 @@ export const SfrTopBar = () => (
 
 /* Authenticated slim bar with page title */
 export const SfrAppBar = ({ title }) => {
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const nav = useNavigate();
   return (
     <header data-testid={APP.header} className="bg-white border-b border-border sticky top-0 z-40">
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link to="/factures"><SfrLogo size={32} /></Link>
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+          <Link to="/verification"><SfrLogo size={32} /></Link>
           {title && (
-            <span className="font-heading font-semibold text-lg tracking-tight border-l border-border pl-4">
+            <span className="font-heading font-semibold text-base sm:text-lg tracking-tight border-l border-border pl-3 sm:pl-4 truncate">
               {title}
             </span>
           )}
         </div>
         <div className="flex items-center gap-4">
-          <Link to="/factures" data-testid={APP.navInvoices} className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors hidden sm:block">
-            Factures
-          </Link>
           <button
             data-testid={AUTH.logoutButton}
-            onClick={() => { logout(); nav("/login"); }}
+            onClick={() => { logout(); nav("/verification"); }}
             title="Déconnexion"
-            className="w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center hover:bg-[#B30015] transition-colors"
+            className="w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center hover:bg-[#B30015] transition-colors shrink-0"
           >
             <LogOut size={16} />
           </button>

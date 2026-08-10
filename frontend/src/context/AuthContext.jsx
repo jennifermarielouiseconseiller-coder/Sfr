@@ -35,13 +35,20 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
+  const verify = async (phone, email) => {
+    const { data } = await api.post("/auth/verify", { phone, email });
+    saveToken(data.token, false);
+    setUser(data.user);
+    return data; // { token, user, invoice_id }
+  };
+
   const logout = () => {
     clearToken();
     setUser(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, ready, login, logout }}>
+    <AuthContext.Provider value={{ user, ready, login, verify, logout }}>
       {children}
     </AuthContext.Provider>
   );

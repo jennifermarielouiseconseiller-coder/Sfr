@@ -42,16 +42,16 @@ function Stepper({ step }) {
       {steps.map((s, i) => (
         <div key={s} className="flex items-center gap-2">
           <div
-            className={`w-7 h-7 flex items-center justify-center text-xs font-bold ${
+            className={`w-7 h-7 flex items-center justify-center text-xs font-bold shrink-0 ${
               i <= step ? "bg-primary text-white" : "bg-secondary text-muted-foreground"
             }`}
           >
             {i + 1}
           </div>
-          <span className={`text-sm ${i <= step ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+          <span className={`text-sm hidden sm:inline ${i <= step ? "text-foreground font-medium" : "text-muted-foreground"}`}>
             {s}
           </span>
-          {i < steps.length - 1 && <div className="w-8 h-px bg-border" />}
+          {i < steps.length - 1 && <div className="w-6 sm:w-8 h-px bg-border" />}
         </div>
       ))}
     </div>
@@ -76,10 +76,10 @@ export default function Payment() {
     api
       .get(`/invoices/${id}`)
       .then((r) => {
-        if (r.data.status === "paid") nav("/factures");
+        if (r.data.status === "paid") nav(`/factures/${id}`);
         else setInvoice(r.data);
       })
-      .catch(() => nav("/factures"));
+      .catch(() => nav("/verification"));
   }, [id, nav]);
 
   const validate = () => {
@@ -162,16 +162,17 @@ export default function Payment() {
   return (
     <div className="min-h-screen bg-background" data-testid={PAYMENT.screen}>
       <header className="bg-white border-b border-border">
-        <div className="max-w-2xl mx-auto px-6 h-16 flex items-center gap-3">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-2 sm:gap-3">
           <SfrLogo size={36} />
-          <span className="font-heading font-bold tracking-tight">Paiement sécurisé</span>
+          <span className="font-heading font-bold tracking-tight text-sm sm:text-base">Paiement sécurisé</span>
           <span className="ml-auto flex items-center gap-1.5 text-sm text-muted-foreground">
-            <ShieldCheck size={16} className="text-green-600" /> Connexion chiffrée
+            <ShieldCheck size={16} className="text-green-600" />
+            <span className="hidden sm:inline">Connexion chiffrée</span>
           </span>
         </div>
       </header>
 
-      <div className="max-w-2xl mx-auto px-6 py-10">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
         <Stepper step={phase === "form" ? 0 : phase === "processing" ? 1 : 2} />
 
         <AnimatePresence mode="wait">
@@ -179,19 +180,19 @@ export default function Payment() {
             <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <button
                 data-testid={PAYMENT.cancel}
-                onClick={() => nav("/factures")}
+                onClick={() => nav(`/factures/${id}`)}
                 className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6"
               >
-                <ArrowLeft size={16} /> Retour aux factures
+                <ArrowLeft size={16} /> Retour à la facture
               </button>
 
               <div className="bg-white border border-border p-6 mb-6">
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
                     <p className="text-sm text-muted-foreground">{invoice.label}</p>
                     <p className="font-heading font-semibold">N° {invoice.number} · {invoice.period}</p>
                   </div>
-                  <p data-testid={PAYMENT.summaryAmount} className="font-heading font-extrabold text-3xl text-primary">
+                  <p data-testid={PAYMENT.summaryAmount} className="font-heading font-extrabold text-2xl sm:text-3xl text-primary shrink-0">
                     {formatEUR(invoice.amount)}
                   </p>
                 </div>
@@ -327,11 +328,11 @@ export default function Payment() {
                   ["Carte", `**** **** **** ${txn.card_last4}`],
                   ["IBAN de prélèvement", txn.iban_masked],
                 ].map(([k, v], i) => (
-                  <div key={i} className="flex justify-between items-center py-2 border-b border-border last:border-0">
-                    <span className="text-muted-foreground text-sm">{k}</span>
+                  <div key={i} className="flex justify-between items-start gap-3 py-2 border-b border-border last:border-0">
+                    <span className="text-muted-foreground text-sm shrink-0">{k}</span>
                     <span
                       data-testid={k.startsWith("Référence") ? PAYMENT.successReference : undefined}
-                      className="font-medium text-right"
+                      className="font-medium text-right break-all"
                     >
                       {v}
                     </span>
@@ -349,10 +350,10 @@ export default function Payment() {
                 </button>
                 <button
                   data-testid={PAYMENT.backToInvoices}
-                  onClick={() => nav("/factures")}
+                  onClick={() => nav(`/factures/${id}`)}
                   className="flex-1 h-12 bg-primary text-primary-foreground font-semibold hover:bg-[#B30015] transition-colors"
                 >
-                  Retour à mes factures
+                  Terminer
                 </button>
               </div>
             </motion.div>
@@ -382,10 +383,10 @@ export default function Payment() {
                   <RotateCcw size={17} /> Réessayer
                 </button>
                 <button
-                  onClick={() => nav("/factures")}
+                  onClick={() => nav(`/factures/${id}`)}
                   className="flex-1 h-12 border border-input font-semibold hover:bg-secondary transition-colors"
                 >
-                  Retour aux factures
+                  Retour à la facture
                 </button>
               </div>
             </motion.div>

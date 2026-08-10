@@ -7,7 +7,7 @@ import { SfrAppBar, SfrFooter } from "@/components/SfrChrome";
 import { DETAIL } from "@/constants/testIds";
 import {
   Info, XCircle, Calendar, ShieldAlert, Clock, CreditCard, Lock,
-  Copy, ChevronDown, RotateCcw, Download, Phone, Building2, ArrowLeft,
+  Copy, ChevronDown, RotateCcw, Download, Phone, Building2,
   CheckCircle2,
 } from "lucide-react";
 
@@ -33,7 +33,7 @@ export default function InvoiceDetail() {
   const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
-    api.get(`/invoices/${id}`).then((r) => setInv(r.data)).catch(() => nav("/factures"));
+    api.get(`/invoices/${id}`).then((r) => setInv(r.data)).catch(() => nav("/verification"));
   }, [id, nav]);
 
   const downloadInvoice = async () => {
@@ -89,17 +89,9 @@ export default function InvoiceDetail() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background" data-testid={DETAIL.screen}>
-      <SfrAppBar title="Factures impayées" />
+      <SfrAppBar title="Facture à régler" />
 
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-8 sfr-fade-up">
-        <button
-          data-testid={DETAIL.back}
-          onClick={() => nav("/factures")}
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6"
-        >
-          <ArrowLeft size={16} /> Retour aux factures
-        </button>
-
         {/* Invoice summary */}
         <div className="bg-white border border-border p-6 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -140,7 +132,7 @@ export default function InvoiceDetail() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-px bg-border border border-border mt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-border border border-border mt-4">
                   <div className="bg-white p-4">
                     <div className="flex items-center gap-1.5 text-muted-foreground text-xs uppercase tracking-wide">
                       <Calendar size={13} /> Date de l'échec
@@ -189,7 +181,7 @@ export default function InvoiceDetail() {
                         <span className="text-xs uppercase tracking-wide text-muted-foreground">IBAN du compte débité</span>
                         <Lock size={13} className="text-muted-foreground" />
                       </div>
-                      <p data-testid={DETAIL.ibanMasked} className="font-mono font-semibold tracking-wide mt-1">
+                      <p data-testid={DETAIL.ibanMasked} className="font-mono font-semibold tracking-wide mt-1 text-sm sm:text-base break-all">
                         {inv.iban_masked}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
@@ -200,17 +192,17 @@ export default function InvoiceDetail() {
                 </div>
 
                 {/* Transaction ref */}
-                <div className="flex items-center justify-between bg-secondary p-4 mt-4">
-                  <div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-secondary p-4 mt-4">
+                  <div className="min-w-0">
                     <p className="text-xs text-muted-foreground">Référence transaction</p>
-                    <p data-testid={DETAIL.txnRef} className="font-mono font-semibold mt-0.5">
+                    <p data-testid={DETAIL.txnRef} className="font-mono font-semibold mt-0.5 break-all">
                       {inv.last_transaction_ref}
                     </p>
                   </div>
                   <button
                     data-testid={DETAIL.copyRef}
                     onClick={copyRef}
-                    className="inline-flex items-center gap-1.5 text-sm border border-input px-3 h-9 hover:bg-white transition-colors"
+                    className="inline-flex items-center justify-center gap-1.5 text-sm border border-input px-3 h-9 bg-white hover:bg-secondary transition-colors shrink-0"
                   >
                     <Copy size={15} /> Copier
                   </button>
@@ -232,12 +224,12 @@ export default function InvoiceDetail() {
                     className="mt-3 space-y-2 overflow-hidden"
                   >
                     {(inv.attempt_history || []).map((a, i) => (
-                      <li key={i} className="flex items-center justify-between text-sm border border-border p-3">
+                      <li key={i} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 text-sm border border-border p-3">
                         <span className="flex items-center gap-2">
-                          <XCircle size={15} className="text-primary" /> {fmtDateTime(a.date)}
+                          <XCircle size={15} className="text-primary shrink-0" /> {fmtDateTime(a.date)}
                         </span>
                         <span className="text-muted-foreground">{a.reason}</span>
-                        <span className="font-mono text-xs text-muted-foreground">{a.ref}</span>
+                        <span className="font-mono text-xs text-muted-foreground break-all">{a.ref}</span>
                       </li>
                     ))}
                   </motion.ul>
