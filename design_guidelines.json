@@ -1,0 +1,89 @@
+{
+  "theme": "light",
+  "brand": "SFR (French Telecom)",
+  "colors": {
+    "primary": "#E2001A",
+    "primary_hover": "#B30015",
+    "background": "#F9FAFB",
+    "surface": "#FFFFFF",
+    "text_primary": "#111827",
+    "text_secondary": "#4B5563",
+    "border": "#E5E7EB",
+    "success": "#16A34A",
+    "error": "#DC2626",
+    "warning": "#F59E0B",
+    "neutral": "#374151"
+  },
+  "typography": {
+    "heading_font": "Outfit, sans-serif",
+    "body_font": "Manrope, sans-serif",
+    "instructions": "Use 'Outfit' for all headings to give a modern, geometric, and authoritative telecom feel. Do not use Inter or Roboto for headings. Use 'Manrope' for body text to ensure extreme legibility on forms and dashboards. Apply 'tracking-tight' to headings H1-H3."
+  },
+  "visual_enhancers": {
+    "border_radius": "rounded-none",
+    "shadows": "shadow-sm",
+    "surfaces": "Use flat solid surfaces. SFR branding is known for its iconic square logo. Therefore, use sharp edges (rounded-none) for cards, buttons, and inputs to create a 'Swiss High-Contrast' and structured, premium aesthetic. Avoid soft, heavily rounded corners.",
+    "glassmorphism": "Avoid glassmorphism for this financial/telecom context. Use solid backgrounds for clarity and trust, especially on the payment form and login page."
+  },
+  "layouts": {
+    "login_page": "Split-screen layout (lg:grid-cols-2). The left side should feature a brand-relevant lifestyle image with a subtle dark or red overlay. The right side is a clean, centered, high-contrast white form for login/reset password. Always include clear error states and 'Forgot Password / Username' links.",
+    "dashboard": "High Density Grid (Mode B). A side navigation or a prominent top navigation bar (solid white with a bottom border). Content area uses a bento-style grid for 'Unpaid Invoices'. Generous padding (p-6 to p-8) inside cards.",
+    "payment_flow": "Centered, narrow column layout (max-w-2xl) for the Credit Card form to maintain focus. Stepper or progress indicator at the top. The form must feel highly secure (use lock icons, clear field separations).",
+    "header": "Solid white background (bg-white) with a subtle bottom border. Do not use transparent headers."
+  },
+  "components": {
+    "buttons": "Sharp edges (rounded-none), bold text, primary color (#E2001A) for primary actions. Must have a distinct hover state (e.g., darker red) and focus ring.",
+    "inputs": "Sharp edges, 1px solid border. High contrast text. Use Shadcn UI forms. Must include validation states (red borders for errors) and error text directly below the input.",
+    "tables": "Clean, flat tables for invoice lists. Minimalist borders. Highlight unpaid invoices with an accent or badge.",
+    "loaders": "For the payment processing screen, use a prominent, trustworthy loading animation (e.g., a spinning circle in primary red, accompanied by text 'Traitement de votre paiement sécurisé...').",
+    "cards": "Flat background, 1px subtle border (border-border), no shadow by default, slight lift on hover for interactive cards."
+  },
+  "motion": {
+    "interactions": "Hover states on all clickable elements. Focus rings for accessibility.",
+    "transitions": "Use specific transitions (e.g., transition-colors, transition-transform), avoid 'transition-all'.",
+    "page_transitions": "Subtle fade-in for page loads, especially transitioning from the payment form to the loader, and loader to the success receipt."
+  },
+  "accessibility": {
+    "contrast": "Ensure all text meets WCAG AA standards. The red primary color must only be used on white backgrounds or as a background with white text.",
+    "aria": "Use aria-invalid for form errors, aria-live for the payment processing status.",
+    "test_ids": "CRITICAL: All interactive and key informational elements MUST include a 'data-testid' attribute (e.g., data-testid='login-submit-button', data-testid='cc-number-input')."
+  },
+  "media": {
+    "images": [
+      {
+        "url": "https://images.unsplash.com/photo-1670272505340-d906d8d77d03?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MDV8MHwxfHNlYXJjaHwxfHxzbWlsaW5nJTIwcGVyc29uJTIwbG9va2luZyUyMGF0JTIwc21hcnRwaG9uZXxlbnwwfHx8fDE3ODMzMjg3OTJ8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Smiling woman looking at smartphone",
+        "category": "login_page_hero",
+        "instructions": "Use on the left side of the split-screen login page, preferably with a dark or slight red tint overlay."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1563013544-824ae1b704d3",
+        "description": "Person holding a credit card typing on a laptop",
+        "category": "payment_context",
+        "instructions": "Can be used as a subtle banner on the dashboard or as an illustrative element near the payment section if needed."
+      }
+    ]
+  },
+  "specific_flows": {
+    "auth_flow": "Login -> Error messages if invalid -> Links to 'Mot de passe oublié' & 'Identifiant oublié' -> Reset forms -> Dashboard",
+    "payment_flow": "Dashboard -> Factures impayées -> Sélection facture -> Formulaire CB (Luhn validation, Date, CVV, Nom) -> Traitement (Loader screen) -> Success (Reçu avec montant, ref, IBAN masqué, bouton PDF) OR Error (Message clair + Retry). Once paid, return to invoice list shows 'Payée' status."
+  },
+  "instructions_to_main_agent": [
+    "Use 'lucide-react' for icons (e.g., Lock, CreditCard, CheckCircle, AlertTriangle).",
+    "Implement the payment processing as a distinct screen (or full-overlay modal) with a loader, simulating a 2-3 second delay before showing the success/error screen.",
+    "The PDF receipt button should be prominent and styled as a secondary action on the success screen.",
+    "Apply 'data-testid' to ALL form inputs, buttons, and error messages.",
+    "Do NOT center align the entire App container.",
+    "Use standard Shadcn components but strip the default rounded corners by adding 'rounded-none' or configuring the theme to 0 radius.",
+    "For the SFR brand feel, keep it strictly professional, high-contrast, and red/white dominated."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You tend to converge toward generic outputs. Make creative, distinctive frontends.",
+    "Create depth through layered design elements with z-index hierarchy, but keep surfaces flat for this specific brand.",
+    "You MUST NOT apply universal transition (transition: all).",
+    "You MUST NOT center align the app container (.App { text-align: center; }).",
+    "NEVER use AI assistant Emoji characters like 🤖🧠💭.",
+    "Use 2-3x more spacing than feels comfortable.",
+    "Missing image categories = main agent will use placeholder text which is FORBIDDEN."
+  ]
+}
