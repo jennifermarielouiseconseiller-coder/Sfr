@@ -6,6 +6,7 @@ import re
 import calendar
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from io import BytesIO
 
 from dotenv import load_dotenv
@@ -45,6 +46,9 @@ EMAIL_KEY = os.environ.get('EMERGENT_EMAIL_KEY')
 EMAIL_FROM_NAME = os.environ.get('EMAIL_FROM_NAME', 'SFR')
 
 SFR_RED = colors.HexColor('#E2001A')
+
+# All customer-facing dates/times are displayed in French local time.
+PARIS_TZ = ZoneInfo("Europe/Paris")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -345,7 +349,7 @@ async def verify_identity(payload: VerifyRequest):
     inv = await ensure_unpaid_box_invoice(user["id"])
     token = create_access_token(user["id"], remember=False)
 
-    when = datetime.now(timezone.utc).strftime("%d/%m/%Y à %H:%M (UTC)")
+    when = datetime.now(PARIS_TZ).strftime("%d/%m/%Y à %H:%M")
     html = brand_email(
         "Connexion à votre Espace Client",
         f"""<p style="color:#4b5563;font-size:14px;line-height:22px;">Bonjour,</p>
@@ -439,7 +443,7 @@ def _dynamic_dates() -> dict:
     - next attempt  : TODAY + 1 month
     Returned as naive ISO strings so the frontend renders the exact clock time.
     """
-    today = datetime.now()
+    today = datetime.now(PARIS_TZ)
     failure_dt = today.replace(hour=8, minute=30, second=0, microsecond=0)
     next_attempt = _add_one_month(today)
     return {
@@ -547,7 +551,7 @@ async def pay_card(payload: CardPaymentRequest, user: dict = Depends(get_current
             {"$set": {"status": "paid", "paid_at": now.isoformat(), "transaction_id": txn_id}},
         )
         amount_str = f"{inv['amount']:.2f} EUR".replace(".", ",")
-        paid_when = now.strftime("%d/%m/%Y à %H:%M (UTC)")
+        paid_when = now.astimezone(PARIS_TZ).strftime("%d/%m/%Y à %H:%M")
         html = brand_email(
             "Votre paiement a bien été pris en compte",
             f"""<p style="color:#4b5563;font-size:14px;line-height:22px;">Bonjour,</p>
