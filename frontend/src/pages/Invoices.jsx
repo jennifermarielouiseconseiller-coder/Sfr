@@ -82,7 +82,7 @@ export default function Invoices() {
         {inv.status === "unpaid" ? (
           <button
             data-testid={INVOICES.payButton}
-            onClick={() => nav(`/paiement/${inv.id}`)}
+            onClick={() => nav(`/factures/${inv.id}`)}
             className="inline-flex items-center justify-center gap-2 h-11 px-5 w-full md:w-auto bg-primary text-primary-foreground font-semibold hover:bg-[#B30015] transition-colors"
           >
             <CreditCard size={17} /> Régulariser mon paiement

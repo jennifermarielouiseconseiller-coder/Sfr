@@ -277,6 +277,16 @@ def public_invoice(inv: dict) -> dict:
         "iban_masked": inv["iban_masked"],
         "paid_at": inv.get("paid_at"),
         "transaction_id": inv.get("transaction_id"),
+        "payment_method": inv.get("payment_method", "Prélèvement automatique par IBAN"),
+        "mandate_status": inv.get("mandate_status", "active"),
+        "failure_reason": inv.get("failure_reason"),
+        "failure_code": inv.get("failure_code"),
+        "failure_date": inv.get("failure_date"),
+        "attempts": inv.get("attempts"),
+        "max_attempts": inv.get("max_attempts", 3),
+        "next_attempt_date": inv.get("next_attempt_date"),
+        "last_transaction_ref": inv.get("last_transaction_ref"),
+        "attempt_history": inv.get("attempt_history", []),
     }
 
 
@@ -442,6 +452,78 @@ async def receipt_pdf(invoice_id: str, user: dict = Depends(get_current_user)):
     )
 
 
+@api_router.get("/invoices/{invoice_id}/facture.pdf")
+async def facture_pdf(invoice_id: str, user: dict = Depends(get_current_user)):
+    inv = await db.invoices.find_one({"id": invoice_id, "user_id": user["id"]}, {"_id": 0})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Facture introuvable")
+
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    w, h = A4
+    c.setFillColor(SFR_RED)
+    c.rect(0, h - 45 * mm, w, 45 * mm, fill=1, stroke=0)
+    c.setFillColor(colors.white)
+    c.setFont("Helvetica-Bold", 32)
+    c.drawString(20 * mm, h - 30 * mm, "SFR")
+    c.setFont("Helvetica", 12)
+    c.drawRightString(w - 20 * mm, h - 25 * mm, "Facture")
+    c.setFont("Helvetica", 9)
+    c.drawRightString(w - 20 * mm, h - 32 * mm, f"N° {inv['number']}")
+
+    y = h - 62 * mm
+    c.setFillColor(colors.HexColor('#111827'))
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(20 * mm, y, inv["label"])
+    y -= 8 * mm
+    is_paid = inv["status"] == "paid"
+    c.setFillColor(colors.HexColor('#16A34A') if is_paid else SFR_RED)
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(20 * mm, y, "Statut : PAYÉE" if is_paid else "Statut : IMPAYÉE")
+
+    rows = [
+        ("Client", user["name"]),
+        ("Numéro de facture", inv["number"]),
+        ("Période", inv["period"]),
+        ("Date d'échéance", inv["due_date"]),
+        ("Moyen de paiement", inv.get("payment_method", "Prélèvement automatique par IBAN")),
+        ("IBAN de prélèvement", inv["iban_masked"]),
+    ]
+    y -= 14 * mm
+    for label, value in rows:
+        c.setFont("Helvetica", 10)
+        c.setFillColor(colors.HexColor('#6b7280'))
+        c.drawString(20 * mm, y, label)
+        c.setFont("Helvetica-Bold", 11)
+        c.setFillColor(colors.HexColor('#111827'))
+        c.drawString(80 * mm, y, str(value))
+        c.setStrokeColor(colors.HexColor('#e5e7eb'))
+        c.line(20 * mm, y - 3 * mm, w - 20 * mm, y - 3 * mm)
+        y -= 11 * mm
+
+    y -= 6 * mm
+    c.setFillColor(colors.HexColor('#f9fafb'))
+    c.rect(20 * mm, y - 18 * mm, w - 40 * mm, 22 * mm, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor('#6b7280'))
+    c.setFont("Helvetica", 11)
+    c.drawString(26 * mm, y - 6 * mm, "Montant total TTC")
+    c.setFillColor(SFR_RED)
+    c.setFont("Helvetica-Bold", 22)
+    c.drawRightString(w - 26 * mm, y - 8 * mm, f"{inv['amount']:.2f} EUR".replace(".", ","))
+
+    c.setFillColor(colors.HexColor('#9ca3af'))
+    c.setFont("Helvetica", 8)
+    c.drawString(20 * mm, 15 * mm, "SFR — Facture générée automatiquement par votre Espace Client.")
+    c.showPage()
+    c.save()
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="facture-{inv["number"]}.pdf"'},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Seeding
 # ---------------------------------------------------------------------------
@@ -473,12 +555,35 @@ async def seed():
 
     if await db.invoices.count_documents({"user_id": user_id}) == 0:
         iban = "FR76 3000 4000 0512 3456 7890 143"
-        masked = "FR76 **** **** **** **** **** 143"
+        masked = "FR76 XXXX XXXX XXXX XXXX XXXX 143"
         seed_invoices = [
-            {"number": "FACT-2026-0512", "label": "Forfait Mobile 5G + Box Fibre", "period": "Mai 2026", "amount": 64.99, "due_date": "2026-06-05", "status": "unpaid"},
-            {"number": "FACT-2026-0411", "label": "Forfait Mobile 5G + Box Fibre", "period": "Avril 2026", "amount": 64.99, "due_date": "2026-05-05", "status": "unpaid"},
-            {"number": "FACT-2026-0322", "label": "Option Multi-SIM + International", "period": "Mars 2026", "amount": 12.00, "due_date": "2026-04-05", "status": "unpaid"},
-            {"number": "FACT-2026-0210", "label": "Forfait Mobile 5G + Box Fibre", "period": "Février 2026", "amount": 64.99, "due_date": "2026-03-05", "status": "paid"},
+            {"number": "FACT-2026-0512", "label": "Forfait Mobile 5G + Box Fibre", "period": "Mai 2026", "amount": 64.99, "due_date": "2026-06-05", "status": "unpaid",
+             "payment_method": "Prélèvement automatique par IBAN", "mandate_status": "active",
+             "failure_reason": "Fonds insuffisants sur le compte bancaire associé", "failure_code": "ERR_PAY_301",
+             "failure_date": "2026-06-06T09:12:00", "attempts": 2, "max_attempts": 3, "next_attempt_date": "2026-06-23",
+             "last_transaction_ref": "TXN-1948960898",
+             "attempt_history": [
+                 {"date": "2026-06-06T09:12:00", "status": "failed", "reason": "Fonds insuffisants", "ref": "TXN-1948960898"},
+                 {"date": "2026-06-01T06:00:00", "status": "failed", "reason": "Fonds insuffisants", "ref": "TXN-1931004552"},
+             ]},
+            {"number": "FACT-2026-0411", "label": "Forfait Mobile 5G + Box Fibre", "period": "Avril 2026", "amount": 64.99, "due_date": "2026-05-05", "status": "unpaid",
+             "payment_method": "Prélèvement automatique par IBAN", "mandate_status": "active",
+             "failure_reason": "Prélèvement rejeté par la banque", "failure_code": "ERR_PAY_205",
+             "failure_date": "2026-05-06T08:40:00", "attempts": 1, "max_attempts": 3, "next_attempt_date": "2026-05-20",
+             "last_transaction_ref": "TXN-1847221093",
+             "attempt_history": [
+                 {"date": "2026-05-06T08:40:00", "status": "failed", "reason": "Rejet banque", "ref": "TXN-1847221093"},
+             ]},
+            {"number": "FACT-2026-0322", "label": "Option Multi-SIM + International", "period": "Mars 2026", "amount": 12.00, "due_date": "2026-04-05", "status": "unpaid",
+             "payment_method": "Prélèvement automatique par IBAN", "mandate_status": "suspended",
+             "failure_reason": "Mandat SEPA expiré", "failure_code": "ERR_PAY_118",
+             "failure_date": "2026-04-06T10:05:00", "attempts": 3, "max_attempts": 3, "next_attempt_date": None,
+             "last_transaction_ref": "TXN-1720558471",
+             "attempt_history": [
+                 {"date": "2026-04-06T10:05:00", "status": "failed", "reason": "Mandat expiré", "ref": "TXN-1720558471"},
+             ]},
+            {"number": "FACT-2026-0210", "label": "Forfait Mobile 5G + Box Fibre", "period": "Février 2026", "amount": 64.99, "due_date": "2026-03-05", "status": "paid",
+             "payment_method": "Carte bancaire", "mandate_status": "active"},
         ]
         docs = []
         for inv in seed_invoices:

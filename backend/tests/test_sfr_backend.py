@@ -210,3 +210,37 @@ def test_get_payment_by_id(auth_headers):
     resp = requests.get(f"{API}/payments/{txn_id}", headers=auth_headers, timeout=30)
     assert resp.status_code == 200
     assert resp.json()["id"] == txn_id
+
+
+# ---- Iteration 2: enriched invoice + facture.pdf
+def test_invoice_detail_has_failure_fields(auth_headers):
+    r = requests.get(f"{API}/invoices", headers=auth_headers, timeout=30)
+    unpaid = [i for i in r.json() if i["status"] == "unpaid"]
+    if not unpaid:
+        pytest.skip("no unpaid invoice")
+    inv = requests.get(f"{API}/invoices/{unpaid[0]['id']}", headers=auth_headers, timeout=30).json()
+    for k in ("failure_reason", "failure_code", "failure_date", "attempts",
+              "max_attempts", "mandate_status", "payment_method",
+              "last_transaction_ref", "attempt_history"):
+        assert k in inv, f"missing {k} in invoice detail"
+    assert isinstance(inv["attempt_history"], list)
+    assert inv["attempts"] >= 1 and inv["max_attempts"] == 3
+
+
+def test_facture_pdf_ok(auth_headers):
+    r = requests.get(f"{API}/invoices", headers=auth_headers, timeout=30)
+    lst = r.json()
+    if not lst:
+        pytest.skip("no invoice")
+    inv_id = lst[0]["id"]
+    r = requests.get(f"{API}/invoices/{inv_id}/facture.pdf", headers=auth_headers, timeout=30)
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/pdf")
+    assert r.content.startswith(b"%PDF")
+
+
+def test_facture_pdf_requires_auth():
+    r = requests.get(f"{API}/invoices", headers={"Authorization": "Bearer bad"}, timeout=30)
+    # need a real id: use auth
+    r2 = requests.get(f"{API}/invoices/nonexistent/facture.pdf", timeout=30)
+    assert r2.status_code in (401, 403)

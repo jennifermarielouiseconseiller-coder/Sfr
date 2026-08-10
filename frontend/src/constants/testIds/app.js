@@ -3,6 +3,8 @@ export const APP = {
   logo: "sfr-logo",
   navDashboard: "nav-dashboard",
   navInvoices: "nav-invoices",
+  userMenu: "user-menu-button",
+  footer: "app-footer",
 };
 
 export const INVOICES = {
@@ -14,6 +16,28 @@ export const INVOICES = {
   unpaidCount: "unpaid-count",
   totalDue: "total-due-amount",
   emptyState: "invoices-empty-state",
+};
+
+export const DETAIL = {
+  screen: "invoice-detail-screen",
+  amount: "detail-amount",
+  failureCard: "failure-info-card",
+  failureReason: "failure-reason",
+  failureCode: "failure-code",
+  failureDate: "failure-date",
+  attempts: "failure-attempts",
+  mandateStatus: "mandate-status-badge",
+  ibanMasked: "detail-iban-masked",
+  txnRef: "detail-transaction-ref",
+  copyRef: "copy-transaction-ref",
+  history: "attempt-history-toggle",
+  regulariserCard: "regulariser-card",
+  cardOption: "payment-method-card-option",
+  retryPayment: "retry-payment-button",
+  downloadInvoice: "download-invoice-button",
+  help1023: "help-1023-button",
+  nextAttempt: "next-attempt-info",
+  back: "detail-back-button",
 };
 
 export const PAYMENT = {

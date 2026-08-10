@@ -9,6 +9,7 @@ import ForgotIdentifier from "@/pages/ForgotIdentifier";
 import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
 import Invoices from "@/pages/Invoices";
+import InvoiceDetail from "@/pages/InvoiceDetail";
 import Payment from "@/pages/Payment";
 
 function App() {
@@ -17,7 +18,7 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<Navigate to="/factures" replace />} />
             <Route path="/login" element={<Login />} />
             <Route path="/mot-de-passe-oublie" element={<ForgotPassword />} />
             <Route path="/identifiant-oublie" element={<ForgotIdentifier />} />
@@ -39,6 +40,14 @@ function App() {
               }
             />
             <Route
+              path="/factures/:id"
+              element={
+                <ProtectedRoute>
+                  <InvoiceDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/paiement/:id"
               element={
                 <ProtectedRoute>
@@ -46,7 +55,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<Navigate to="/factures" replace />} />
           </Routes>
         </BrowserRouter>
         <Toaster />

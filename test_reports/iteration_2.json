@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 2 e2e testing complete. Backend: 21/21 pytest tests pass (all iter1 tests + 3 new: enriched invoice fields, facture.pdf 200 with application/pdf + %PDF magic bytes, unauth on facture.pdf). Frontend: verified new SFR-styled login page with client-side captcha (read from data-testid='login-captcha-code'), wrong-captcha error message, wrong-password error, password show/hide toggle, 'Rester connecté' checked-by-default + localStorage persistence after login, all footer/help links present, forgot-password + forgot-identifier navigation. Invoices list -> pay button now navigates to /factures/:id detail page (not directly to payment form). Invoice DETAIL screen shows failure-info-card with all fields (failure-reason='Fonds insuffisants...', failure-code='ERR_PAY_301', failure-attempts='2 / 3', mandate-status-badge='MANDAT ACTIF', detail-iban-masked, detail-transaction-ref='TXN-...'), next-attempt-info, help-1023-button, attempt-history-toggle expands the history (~3.4KB extra DOM). Copy transaction ref works (fixed clipboard exception in sandboxed iframe). Download facture.pdf returns 200 application/pdf. Retry payment navigates to /paiement/:id and the full card payment flow still works: failure card 4000...0002 -> failure screen + retry, success card 4242 -> success screen with reference SFR-XXXXXXXX-XXXXXXXX. Protected route /factures/:id without token redirects to /login.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "InvoiceDetail copyRef", "issue": "navigator.clipboard.writeText rejected in sandboxed preview iframe caused an uncaught runtime promise rejection overlay that blocked further clicks. Fixed by wrapping in try/catch with legacy execCommand('copy') fallback.", "selector": "data-testid=copy-transaction-ref", "priority": "MEDIUM (FIXED)"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_sfr_backend.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "None blocking. Optional: apply the same clipboard try/catch pattern anywhere else navigator.clipboard.writeText may be used (currently only InvoiceDetail).",
+    "Optional: iteration_1 low-priority note still stands — expiry and CVV inline error <p> use data-testid='payment-field-error' (same as card-number) — inconsistent but not broken."
+  ],
+  "critical_code_review_comments": [
+    "InvoiceDetail.jsx used navigator.clipboard?.writeText without awaiting or catching the returned Promise — in sandboxed cross-origin preview frames the browser rejects clipboard write which surfaced as an uncaught runtime overlay. Any UI using clipboard should await + try/catch and fall back to legacy execCommand.",
+    "Backend server.py: seeded unpaid invoices now carry rich SEPA failure metadata (failure_reason, failure_code, failure_date, attempts/max_attempts, next_attempt_date, mandate_status, payment_method, last_transaction_ref, attempt_history). public_invoice() correctly forwards them and strips mongo _id. Good.",
+    "New GET /api/invoices/{id}/facture.pdf mirrors the receipt endpoint and works with Bearer JWT (no unauthenticated access).",
+    "Client-side captcha is by design (spec says value is exposed in DOM for testing) — not a security control. Fine for MVP but worth noting it provides zero bot protection.",
+    "Login page correctly disables backend call on wrong captcha (no 401 in network trace for wrong-captcha case), and regenerates captcha after failure.",
+    "File sizes still reasonable; InvoiceDetail.jsx ~340 lines — acceptable."
+  ],
+  "updated_files": [
+    "/app/frontend/src/pages/InvoiceDetail.jsx (copyRef: try/catch + execCommand fallback to prevent uncaught clipboard rejection)",
+    "/app/backend/tests/test_sfr_backend.py (added 3 iteration-2 tests)"
+  ],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "100% of tested flows"},
+  "test_credentials": "identifier=dacostakanan / email=dacostakanan@gmail.com / password=Sfr@2026! ; captcha readable at data-testid=login-captcha-code ; success card 4242 4242 4242 4242 ; failure card 4000 0000 0000 0002 ; expiry 12/28 ; cvv 123",
+  "seed_data_creation": "None created. NOTE: this e2e run paid one additional unpaid invoice (4242 success flow). If further UI payment tests are needed, drop invoices collection to re-seed the 3 unpaid + 1 paid set.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login now requires reading the captcha text from data-testid='login-captcha-code' and typing it into 'login-captcha-input'. Wrong captcha short-circuits without a backend call. Payment form testids are cc-number-input / cc-holder-input / cc-expiry-input / cc-cvv-input / payment-submit-button (NOT payment-card-number etc). Token storage key is 'sfr_token' (localStorage when Remember checked, else sessionStorage). Successful login redirects to /factures, not /dashboard. Invoice detail route is /factures/:id and pay button on invoices list navigates there first, then Réessayer -> /paiement/:id. If unpaid invoices are depleted, reseed via Mongo.",
+  "rca of the issue": "Fixed bug: navigator.clipboard.writeText in sandboxed preview iframes throws NotAllowedError. The original one-liner discarded the returned Promise, producing 'Uncaught (in promise) NotAllowedError' which the CRA dev overlay rendered as a full-page error, intercepting subsequent Playwright clicks. Fix: await inside try/catch, on failure fall back to a temporary textarea + document.execCommand('copy'). Reproduction: log in, open any unpaid invoice detail, click Copier — no overlay appears now, toast 'Référence copiée' shown."
+}
