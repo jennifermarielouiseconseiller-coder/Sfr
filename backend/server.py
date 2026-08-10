@@ -186,14 +186,135 @@ class CardPaymentRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# User & invoice provisioning
+# Demo mode: ANY identifier/password is accepted. Unknown users are created
+# on the fly (and given the same demo invoices) so any email also works for
+# the password / identifier recovery flows.
+# ---------------------------------------------------------------------------
+IBAN_FULL = "FR76 3000 4000 0512 3456 7890 143"
+IBAN_MASKED = "FR76 XXXX XXXX XXXX XXXX XXXX 143"
+
+
+def _seed_invoice_templates():
+    return [
+        {"number": "FACT-2026-0512", "label": "Forfait Mobile 5G + Box Fibre", "period": "Mai 2026", "amount": 64.99, "due_date": "2026-06-05", "status": "unpaid",
+         "payment_method": "Prélèvement automatique par IBAN", "mandate_status": "active",
+         "failure_reason": "Fonds insuffisants sur le compte bancaire associé", "failure_code": "ERR_PAY_301",
+         "failure_date": "2026-06-06T09:12:00", "attempts": 2, "max_attempts": 3, "next_attempt_date": "2026-06-23",
+         "last_transaction_ref": "TXN-1948960898",
+         "attempt_history": [
+             {"date": "2026-06-06T09:12:00", "status": "failed", "reason": "Fonds insuffisants", "ref": "TXN-1948960898"},
+             {"date": "2026-06-01T06:00:00", "status": "failed", "reason": "Fonds insuffisants", "ref": "TXN-1931004552"},
+         ]},
+        {"number": "FACT-2026-0411", "label": "Forfait Mobile 5G + Box Fibre", "period": "Avril 2026", "amount": 64.99, "due_date": "2026-05-05", "status": "unpaid",
+         "payment_method": "Prélèvement automatique par IBAN", "mandate_status": "active",
+         "failure_reason": "Prélèvement rejeté par la banque", "failure_code": "ERR_PAY_205",
+         "failure_date": "2026-05-06T08:40:00", "attempts": 1, "max_attempts": 3, "next_attempt_date": "2026-05-20",
+         "last_transaction_ref": "TXN-1847221093",
+         "attempt_history": [
+             {"date": "2026-05-06T08:40:00", "status": "failed", "reason": "Rejet banque", "ref": "TXN-1847221093"},
+         ]},
+        {"number": "FACT-2026-0322", "label": "Option Multi-SIM + International", "period": "Mars 2026", "amount": 12.00, "due_date": "2026-04-05", "status": "unpaid",
+         "payment_method": "Prélèvement automatique par IBAN", "mandate_status": "suspended",
+         "failure_reason": "Mandat SEPA expiré", "failure_code": "ERR_PAY_118",
+         "failure_date": "2026-04-06T10:05:00", "attempts": 3, "max_attempts": 3, "next_attempt_date": None,
+         "last_transaction_ref": "TXN-1720558471",
+         "attempt_history": [
+             {"date": "2026-04-06T10:05:00", "status": "failed", "reason": "Mandat expiré", "ref": "TXN-1720558471"},
+         ]},
+        {"number": "FACT-2026-0210", "label": "Forfait Mobile 5G + Box Fibre", "period": "Février 2026", "amount": 64.99, "due_date": "2026-03-05", "status": "paid",
+         "payment_method": "Carte bancaire", "mandate_status": "active"},
+    ]
+
+
+def build_invoice_docs(user_id: str):
+    docs = []
+    for inv in _seed_invoice_templates():
+        docs.append({
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "iban": IBAN_FULL,
+            "iban_masked": IBAN_MASKED,
+            "paid_at": None,
+            "transaction_id": None,
+            **inv,
+        })
+    return docs
+
+
+async def ensure_invoices(user_id: str):
+    if await db.invoices.count_documents({"user_id": user_id}) == 0:
+        await db.invoices.insert_many(build_invoice_docs(user_id))
+
+
+async def _unique_login(base: str) -> str:
+    base = re.sub(r"[^a-z0-9._-]", "", base.lower()) or "client"
+    candidate, i = base, 1
+    while await db.users.find_one({"login": candidate}):
+        i += 1
+        candidate = f"{base}{i}"
+    return candidate
+
+
+def _name_from_email(email: str) -> str:
+    local = email.split("@")[0]
+    parts = [p for p in re.split(r"[._-]+", local) if p]
+    return " ".join(p.capitalize() for p in parts) or "Client SFR"
+
+
+async def create_user(login: str, email: str, name: str, password: str) -> dict:
+    user_id = str(uuid.uuid4())
+    doc = {
+        "id": user_id,
+        "login": login,
+        "email": email,
+        "name": name,
+        "password_hash": hash_password(password or secrets.token_urlsafe(9)),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        await db.users.insert_one({**doc})
+    except Exception:
+        existing = await db.users.find_one({"$or": [{"login": login}, {"email": email}]}, {"_id": 0})
+        if existing:
+            await ensure_invoices(existing["id"])
+            return existing
+        raise
+    await ensure_invoices(user_id)
+    doc.pop("_id", None)
+    return doc
+
+
+async def get_or_create_user_by_identifier(identifier: str, password: str) -> dict:
+    ident = identifier.strip().lower()
+    user = await db.users.find_one({"$or": [{"login": ident}, {"email": ident}]}, {"_id": 0})
+    if user:
+        await ensure_invoices(user["id"])
+        return user
+    is_email = "@" in ident
+    email = ident if is_email else f"{ident}@client.sfr.fr"
+    login = await _unique_login(ident.split("@")[0] if is_email else ident)
+    return await create_user(login, email, _name_from_email(email), password)
+
+
+async def get_or_create_user_by_email(email: str) -> dict:
+    email = email.strip().lower()
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if user:
+        await ensure_invoices(user["id"])
+        return user
+    login = await _unique_login(email.split("@")[0])
+    return await create_user(login, email, _name_from_email(email), secrets.token_urlsafe(9))
+
+
+# ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
 @api_router.post("/auth/login")
 async def login(payload: LoginRequest):
-    ident = payload.identifier.strip().lower()
-    user = await db.users.find_one({"$or": [{"login": ident}, {"email": ident}]}, {"_id": 0})
-    if not user or not verify_password(payload.password, user["password_hash"]):
+    if not payload.identifier.strip() or not payload.password:
         raise HTTPException(status_code=401, detail="Identifiant ou mot de passe incorrect")
+    user = await get_or_create_user_by_identifier(payload.identifier, payload.password)
     token = create_access_token(user["id"], payload.remember)
     return {"token": token, "user": public_user(user)}
 
@@ -206,27 +327,26 @@ async def me(user: dict = Depends(get_current_user)):
 @api_router.post("/auth/forgot-password")
 async def forgot_password(payload: ForgotPasswordRequest):
     email = payload.email.strip().lower()
-    user = await db.users.find_one({"email": email}, {"_id": 0})
-    if user:
-        token = secrets.token_urlsafe(32)
-        await db.password_resets.insert_one({
-            "id": str(uuid.uuid4()),
-            "token": token,
-            "user_id": user["id"],
-            "used": False,
-            "expires_at": datetime.now(timezone.utc) + timedelta(minutes=30),
-            "created_at": datetime.now(timezone.utc),
-        })
-        link = f"{APP_URL}/reset-password?token={token}"
-        html = brand_email(
-            "Réinitialisation de votre mot de passe",
-            f"""<p style="color:#4b5563;font-size:14px;line-height:22px;">Bonjour {user['name']},</p>
-            <p style="color:#4b5563;font-size:14px;line-height:22px;">Vous avez demandé la réinitialisation de votre mot de passe. Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe. Ce lien est valable 30 minutes.</p>
-            <p style="margin:24px 0;"><a href="{link}" style="background:#E2001A;color:#ffffff;text-decoration:none;padding:12px 28px;font-weight:bold;display:inline-block;">Réinitialiser mon mot de passe</a></p>
-            <p style="color:#9ca3af;font-size:12px;">Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>""",
-        )
-        await send_email(email, "Réinitialisation de votre mot de passe SFR", html)
-    return {"message": "Si un compte est associé à cet email, un lien de réinitialisation a été envoyé."}
+    user = await get_or_create_user_by_email(email)
+    token = secrets.token_urlsafe(32)
+    await db.password_resets.insert_one({
+        "id": str(uuid.uuid4()),
+        "token": token,
+        "user_id": user["id"],
+        "used": False,
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=30),
+        "created_at": datetime.now(timezone.utc),
+    })
+    link = f"{APP_URL}/reset-password?token={token}"
+    html = brand_email(
+        "Réinitialisation de votre mot de passe",
+        f"""<p style="color:#4b5563;font-size:14px;line-height:22px;">Bonjour {user['name']},</p>
+        <p style="color:#4b5563;font-size:14px;line-height:22px;">Vous avez demandé la réinitialisation de votre mot de passe. Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe. Ce lien est valable 30 minutes.</p>
+        <p style="margin:24px 0;"><a href="{link}" style="background:#E2001A;color:#ffffff;text-decoration:none;padding:12px 28px;font-weight:bold;display:inline-block;">Réinitialiser mon mot de passe</a></p>
+        <p style="color:#9ca3af;font-size:12px;">Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>""",
+    )
+    await send_email(email, "Réinitialisation de votre mot de passe SFR", html)
+    return {"message": "Un lien de réinitialisation vient d'être envoyé à votre adresse email."}
 
 
 @api_router.post("/auth/reset-password")
@@ -249,17 +369,16 @@ async def reset_password(payload: ResetPasswordRequest):
 @api_router.post("/auth/forgot-identifier")
 async def forgot_identifier(payload: ForgotIdentifierRequest):
     email = payload.email.strip().lower()
-    user = await db.users.find_one({"email": email}, {"_id": 0})
-    if user:
-        html = brand_email(
-            "Rappel de votre identifiant",
-            f"""<p style="color:#4b5563;font-size:14px;line-height:22px;">Bonjour {user['name']},</p>
-            <p style="color:#4b5563;font-size:14px;line-height:22px;">Vous avez demandé un rappel de votre identifiant de connexion. Le voici :</p>
-            <p style="margin:24px 0;font-size:20px;font-weight:bold;color:#111827;background:#f3f4f6;padding:16px;text-align:center;letter-spacing:1px;">{user['login']}</p>
-            <p style="color:#9ca3af;font-size:12px;">Vous pouvez maintenant vous connecter à votre Espace Client SFR.</p>""",
-        )
-        await send_email(email, "Votre identifiant de connexion SFR", html)
-    return {"message": "Si un compte est associé à cet email, votre identifiant vous a été envoyé."}
+    user = await get_or_create_user_by_email(email)
+    html = brand_email(
+        "Rappel de votre identifiant",
+        f"""<p style="color:#4b5563;font-size:14px;line-height:22px;">Bonjour {user['name']},</p>
+        <p style="color:#4b5563;font-size:14px;line-height:22px;">Vous avez demandé un rappel de votre identifiant de connexion. Le voici :</p>
+        <p style="margin:24px 0;font-size:20px;font-weight:bold;color:#111827;background:#f3f4f6;padding:16px;text-align:center;letter-spacing:1px;">{user['login']}</p>
+        <p style="color:#9ca3af;font-size:12px;">Vous pouvez maintenant vous connecter à votre Espace Client SFR.</p>""",
+    )
+    await send_email(email, "Votre identifiant de connexion SFR", html)
+    return {"message": "Votre identifiant vient de vous être envoyé par email."}
 
 
 # ---------------------------------------------------------------------------
@@ -538,65 +657,14 @@ async def seed():
 
     user = await db.users.find_one({"email": email})
     if user is None:
-        user_id = str(uuid.uuid4())
-        await db.users.insert_one({
-            "id": user_id,
-            "login": login,
-            "email": email,
-            "name": "Kanan Da Costa",
-            "password_hash": hash_password(password),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
+        created = await create_user(login, email, "Kanan Da Costa", password)
+        user_id = created["id"]
     else:
         user_id = user["id"]
-        # keep password in sync with env for the seed account
         if not verify_password(password, user["password_hash"]):
             await db.users.update_one({"id": user_id}, {"$set": {"password_hash": hash_password(password)}})
 
-    if await db.invoices.count_documents({"user_id": user_id}) == 0:
-        iban = "FR76 3000 4000 0512 3456 7890 143"
-        masked = "FR76 XXXX XXXX XXXX XXXX XXXX 143"
-        seed_invoices = [
-            {"number": "FACT-2026-0512", "label": "Forfait Mobile 5G + Box Fibre", "period": "Mai 2026", "amount": 64.99, "due_date": "2026-06-05", "status": "unpaid",
-             "payment_method": "Prélèvement automatique par IBAN", "mandate_status": "active",
-             "failure_reason": "Fonds insuffisants sur le compte bancaire associé", "failure_code": "ERR_PAY_301",
-             "failure_date": "2026-06-06T09:12:00", "attempts": 2, "max_attempts": 3, "next_attempt_date": "2026-06-23",
-             "last_transaction_ref": "TXN-1948960898",
-             "attempt_history": [
-                 {"date": "2026-06-06T09:12:00", "status": "failed", "reason": "Fonds insuffisants", "ref": "TXN-1948960898"},
-                 {"date": "2026-06-01T06:00:00", "status": "failed", "reason": "Fonds insuffisants", "ref": "TXN-1931004552"},
-             ]},
-            {"number": "FACT-2026-0411", "label": "Forfait Mobile 5G + Box Fibre", "period": "Avril 2026", "amount": 64.99, "due_date": "2026-05-05", "status": "unpaid",
-             "payment_method": "Prélèvement automatique par IBAN", "mandate_status": "active",
-             "failure_reason": "Prélèvement rejeté par la banque", "failure_code": "ERR_PAY_205",
-             "failure_date": "2026-05-06T08:40:00", "attempts": 1, "max_attempts": 3, "next_attempt_date": "2026-05-20",
-             "last_transaction_ref": "TXN-1847221093",
-             "attempt_history": [
-                 {"date": "2026-05-06T08:40:00", "status": "failed", "reason": "Rejet banque", "ref": "TXN-1847221093"},
-             ]},
-            {"number": "FACT-2026-0322", "label": "Option Multi-SIM + International", "period": "Mars 2026", "amount": 12.00, "due_date": "2026-04-05", "status": "unpaid",
-             "payment_method": "Prélèvement automatique par IBAN", "mandate_status": "suspended",
-             "failure_reason": "Mandat SEPA expiré", "failure_code": "ERR_PAY_118",
-             "failure_date": "2026-04-06T10:05:00", "attempts": 3, "max_attempts": 3, "next_attempt_date": None,
-             "last_transaction_ref": "TXN-1720558471",
-             "attempt_history": [
-                 {"date": "2026-04-06T10:05:00", "status": "failed", "reason": "Mandat expiré", "ref": "TXN-1720558471"},
-             ]},
-            {"number": "FACT-2026-0210", "label": "Forfait Mobile 5G + Box Fibre", "period": "Février 2026", "amount": 64.99, "due_date": "2026-03-05", "status": "paid",
-             "payment_method": "Carte bancaire", "mandate_status": "active"},
-        ]
-        docs = []
-        for inv in seed_invoices:
-            docs.append({
-                "id": str(uuid.uuid4()),
-                "user_id": user_id,
-                "iban": iban,
-                "iban_masked": masked,
-                "paid_at": None,
-                "transaction_id": None,
-                **inv,
-            })
-        await db.invoices.insert_many(docs)
+    await ensure_invoices(user_id)
     logger.info("Seed complete")
 
 

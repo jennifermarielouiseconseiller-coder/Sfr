@@ -2,8 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { APP, AUTH } from "@/constants/testIds";
 import {
-  Search, ShoppingBag, Mail, User, Menu, ChevronDown,
-  Facebook, Twitter, Youtube, ExternalLink, LogOut,
+  ChevronDown, Facebook, Twitter, Youtube, ExternalLink, LogOut,
 } from "lucide-react";
 
 export const SfrLogo = ({ size = 40 }) => (
@@ -19,17 +18,10 @@ export const SfrLogo = ({ size = 40 }) => (
 /* Public marketing-style top bar (login pages) */
 export const SfrTopBar = () => (
   <header data-testid={APP.header} className="bg-white border-b border-border sticky top-0 z-40">
-    <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+    <div className="max-w-6xl mx-auto px-4 h-16 flex items-center">
       <Link to="/login" className="flex items-center">
         <SfrLogo size={34} />
       </Link>
-      <div className="flex items-center gap-5 text-neutral-800">
-        <Search size={22} className="cursor-pointer hover:text-primary transition-colors" />
-        <ShoppingBag size={22} className="cursor-pointer hover:text-primary transition-colors" />
-        <Mail size={22} className="cursor-pointer hover:text-primary transition-colors" />
-        <User size={22} className="text-primary cursor-pointer" />
-        <Menu size={24} className="cursor-pointer hover:text-primary transition-colors" />
-      </div>
     </div>
   </header>
 );
