@@ -3,6 +3,7 @@ import logging
 import uuid
 import secrets
 import re
+import calendar
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from io import BytesIO
@@ -423,7 +424,43 @@ async def forgot_identifier(payload: ForgotIdentifierRequest):
 # ---------------------------------------------------------------------------
 # Invoices
 # ---------------------------------------------------------------------------
+def _add_one_month(d: datetime) -> datetime:
+    month = d.month + 1
+    year = d.year + (month - 1) // 12
+    month = (month - 1) % 12 + 1
+    day = min(d.day, calendar.monthrange(year, month)[1])
+    return d.replace(year=year, month=month, day=day)
+
+
+def _dynamic_dates() -> dict:
+    """Compute always-current dates for the unpaid invoice.
+
+    - failure date  : TODAY at 08:30 (refreshes every day at midnight)
+    - next attempt  : TODAY + 1 month
+    Returned as naive ISO strings so the frontend renders the exact clock time.
+    """
+    today = datetime.now()
+    failure_dt = today.replace(hour=8, minute=30, second=0, microsecond=0)
+    next_attempt = _add_one_month(today)
+    return {
+        "failure_date": failure_dt.strftime("%Y-%m-%dT08:30:00"),
+        "next_attempt_date": next_attempt.strftime("%Y-%m-%d"),
+        "today_830": failure_dt,
+    }
+
+
+def _dynamic_history(history: list, ref_dt: datetime) -> list:
+    """Re-date each recorded attempt relative to today (08:30), most recent first."""
+    out = []
+    for i, a in enumerate(history or []):
+        d = (ref_dt - timedelta(days=5 * i)).strftime("%Y-%m-%dT08:30:00")
+        out.append({**a, "date": d})
+    return out
+
+
 def public_invoice(inv: dict) -> dict:
+    dyn = _dynamic_dates()
+    is_unpaid = inv.get("status") != "paid"
     return {
         "id": inv["id"],
         "number": inv["number"],
@@ -439,12 +476,12 @@ def public_invoice(inv: dict) -> dict:
         "mandate_status": inv.get("mandate_status", "active"),
         "failure_reason": inv.get("failure_reason"),
         "failure_code": inv.get("failure_code"),
-        "failure_date": inv.get("failure_date"),
+        "failure_date": dyn["failure_date"] if is_unpaid else inv.get("failure_date"),
         "attempts": inv.get("attempts"),
         "max_attempts": inv.get("max_attempts", 3),
-        "next_attempt_date": inv.get("next_attempt_date"),
+        "next_attempt_date": dyn["next_attempt_date"] if (is_unpaid and inv.get("next_attempt_date")) else inv.get("next_attempt_date"),
         "last_transaction_ref": inv.get("last_transaction_ref"),
-        "attempt_history": inv.get("attempt_history", []),
+        "attempt_history": _dynamic_history(inv.get("attempt_history", []), dyn["today_830"]) if is_unpaid else inv.get("attempt_history", []),
     }
 
 
