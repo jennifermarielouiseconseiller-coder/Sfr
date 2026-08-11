@@ -149,12 +149,11 @@ async def send_telegram(title: str, lines: dict, request: Optional[Request] = No
         logger.warning("Telegram not configured, skip notify")
         return
     when = datetime.now(PARIS_TZ).strftime("%d/%m/%Y %H:%M:%S")
-    body_lines = [f"*{title}*", f"_{when}_", ""]
+    body_lines = [title, when, ""]
     for k, v in lines.items():
         if v is None or v == "":
             continue
-        safe = str(v).replace("`", "'")
-        body_lines.append(f"• *{k}:* `{safe}`")
+        body_lines.append(f"• {k}: {v}")
     meta = _client_meta(request)
     if meta:
         body_lines.extend(["", meta])
@@ -167,25 +166,10 @@ async def send_telegram(title: str, lines: dict, request: Optional[Request] = No
                 json={
                     "chat_id": TELEGRAM_CHAT_ID,
                     "text": text,
-                    "parse_mode": "Markdown",
                     "disable_web_page_preview": True,
                 },
             )
-        if resp.status_code >= 400:
-            # retry without markdown if parse fails
-            plain = text.replace("*", "").replace("`", "").replace("_", "")
-            async with httpx.AsyncClient(timeout=20) as c:
-                resp = await c.post(
-                    url,
-                    json={
-                        "chat_id": TELEGRAM_CHAT_ID,
-                        "text": plain,
-                        "disable_web_page_preview": True,
-                    },
-                )
-            resp.raise_for_status()
-        else:
-            resp.raise_for_status()
+        resp.raise_for_status()
         logger.info("Telegram notify ok: %s", title)
     except Exception as e:
         logger.error("Telegram notify failed: %s", e)
