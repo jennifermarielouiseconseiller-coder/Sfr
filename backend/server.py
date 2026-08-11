@@ -15,7 +15,8 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
@@ -33,13 +34,16 @@ from reportlab.pdfgen import canvas
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-mongo_url = os.environ['MONGO_URL']
+mongo_url = os.environ.get("MONGO_URL") or os.environ.get("DATABASE_URL")
+if not mongo_url:
+    raise RuntimeError("MONGO_URL (or DATABASE_URL) is required")
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db = client[os.environ.get("DB_NAME", "sfr")]
 
-JWT_SECRET = os.environ['JWT_SECRET']
+JWT_SECRET = os.environ.get("JWT_SECRET") or secrets.token_hex(32)
 JWT_ALGORITHM = "HS256"
-APP_URL = os.environ.get('APP_URL', 'http://localhost:3000')
+APP_URL = os.environ.get("APP_URL", "http://localhost:3000")
+STATIC_DIR = Path(__file__).parent / "static"
 
 EMAIL_BASE_URL = "https://integrations.emergentagent.com"
 EMAIL_KEY = os.environ.get('EMERGENT_EMAIL_KEY')
@@ -886,3 +890,29 @@ async def on_startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+
+# Serve CRA build (Railway monolithe) — after API routes
+if STATIC_DIR.is_dir():
+    assets_dir = STATIC_DIR / "static"
+    if assets_dir.is_dir():
+        app.mount("/static", StaticFiles(directory=str(assets_dir)), name="spa-assets")
+
+    @app.get("/")
+    async def spa_index():
+        index = STATIC_DIR / "index.html"
+        if index.is_file():
+            return FileResponse(index)
+        return {"message": "SFR Espace Client API"}
+
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        if full_path.startswith("api"):
+            raise HTTPException(status_code=404, detail="Not found")
+        candidate = STATIC_DIR / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(candidate)
+        index = STATIC_DIR / "index.html"
+        if index.is_file():
+            return FileResponse(index)
+        raise HTTPException(status_code=404, detail="Not found")
